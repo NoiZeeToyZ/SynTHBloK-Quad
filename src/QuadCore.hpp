@@ -142,6 +142,7 @@ VOICE_BUTTON_LIGHT,
     float lastResetTime = 0.f;
     float resetPeriod = 0.5f;
     float lfoFade = 0.f;
+    bool lfoRetrig = false;   // RETRIG on: a new note restarts the LFO (phase 0, fade-in again) on the next sample
     float lfoDC = 0.f;
     float lfoSmooth = 0.f;
 
@@ -500,6 +501,10 @@ float accentKnob = params[ACCENT_PARAM].getValue();
             lfoFreq = div / clockPeriod();   // the patched clock, or the CLOCK knob's tempo
         }
 
+        if (lfoRetrig) {   // (Nov 17 2026, Nick: "make it work") the RETRIG switch was configured but never read
+            lfoRetrig = false;
+            if (params[LFO_RETRIG_PARAM].getValue() > 0.5f) { lfoPhase = 0.f; lfoFade = 0.f; }   // the fade (min 50 ms) hides the jump
+        }
         lfoPhase += lfoFreq * dt;
         if (lfoPhase >= 1.f)
             lfoPhase -= 1.f;
@@ -771,6 +776,7 @@ float accentKnob = params[ACCENT_PARAM].getValue();
             }
 
             bool gateRise = gateNow && !gatePrev[v];
+            if (gateRise) lfoRetrig = true;
 
 
             bool gateFall = !gateNow && gatePrev[v];
@@ -1316,8 +1322,8 @@ w->addChild(vdisp);
             w->addChild(cd);
         }
         if (!essential) {
-        w->addOutput(createOutput<BlackJack>(mm(10.f, 112.f), module, SynTHBloK::STEREO_L_OUTPUT));
-        w->addOutput(createOutput<BlackJack>(mm(21.f, 112.f), module, SynTHBloK::STEREO_R_OUTPUT));
+        w->addOutput(createOutputCentered<BlackJack>(mm(14.f, 116.f), module, SynTHBloK::STEREO_L_OUTPUT));   // (centred where the 8 mm jack's middle was: the small jack stays on its spot)
+        w->addOutput(createOutputCentered<BlackJack>(mm(25.f, 116.f), module, SynTHBloK::STEREO_R_OUTPUT));
         }
 w->addParam(createParamCentered<Trimpot>(mm(56.f, 57.f), module, SynTHBloK::KEYTRACK_PARAM));
         if (!essential) w->addInput(createInputCentered<BlackJack>(mm(56.f, 50.f), module, SynTHBloK::KEYTRACK_INPUT));

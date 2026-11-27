@@ -1,6 +1,8 @@
 #pragma once
 // SynTHBloK-QUAD: the module (engine) and its panel controls, shared by SynTHBloK-QUAD and MTX QUAD.
 #include "plugin.hpp"
+#include "OledUi.hpp"   // (BLOX THEMES: MTX parts themed)
+#include "Growl_dsp.hpp"   // (GROWL ON MTX QUAD)
 
 struct SynTHBloK : Module {
 
@@ -231,6 +233,7 @@ VOICE_BUTTON_LIGHT,
     float ladderInR = 0.f;
     float sideLP = 0.f;   // the stereo side is kept above ~150 Hz: the bass stays mono and solid
     float cutLfo = 0.f;              // the LFO for the cutoff (wobble), de-clicked
+    GrowlFx growl; float growlAmt = 0.f;   // (GROWL ON MTX QUAD) MTX QUAD sets growlAmt from its GROWL param; 0 = untouched
 
     float accentSmooth = 0.f;
 
@@ -914,6 +917,7 @@ else {
     filterInR = mixSumR * invVoices;
 }
 
+if (growlAmt > 0.f) { filterIn = growl.pre(0, filterIn, growlAmt, 1.f / dt); filterInR = growl.pre(1, filterInR, growlAmt, 1.f / dt); }   // (GROWL: the fold)
 // final filter output (always defined)
 float fltOut = 0.f;
 
@@ -950,6 +954,7 @@ float keyMod = keyAmt * 0.25f + keyCv * keyAmt * 0.5f;
 // Apply to cutoff
 rawCutoff += keyMod;
 
+rawCutoff += growlAmt * (0.47f + 0.25f * cutLfo);   // (GROWL: opens the cutoff ~4.7 octaves, the LFO +-2.5; GROWL HEARD)
 rawCutoff = clamp(rawCutoff, 0.f, 1.f);
 
 // --- FILTER: a driven 4-pole ladder, run at 2x the sample rate ---
@@ -968,7 +973,7 @@ if (rawCutoff <= 0.0001f) {
 }
 else {
     float drive = params[DRIVE_PARAM].getValue();
-    float pre = 1.f + drive * drive * 9.f + ACC * 1.5f;
+    float pre = (1.f + drive * drive * 9.f + ACC * 1.5f) * (1.f + 2.5f * growlAmt);   // (GROWL: more drive)
     float bias = 0.15f * drive;
 
     // cutoff in Hz: 20 Hz..20 kHz, an octave every tenth of the range
@@ -1006,6 +1011,7 @@ else {
     fltOutR = mid - side;
 }
 
+        if (growlAmt > 0.f) { fltOut = growl.post(0, fltOut, growlAmt, cutLfo, 1.f / dt); fltOutR = growl.post(1, fltOutR, growlAmt, cutLfo, 1.f / dt); }   // (GROWL: the vowels)
         float vcaEnv = envFilter;
         float vcaLevel = params[VCA_OUT_LEVEL_PARAM].getValue();
 
@@ -1119,10 +1125,10 @@ struct ClockDisplay : TransparentWidget {
 
         nvgBeginPath(vg);
         nvgRoundedRect(vg, 0.f, 0.f, w, h, 2.f);
-        nvgFillColor(vg, nvgRGBA(8, 6, 4, 255));
+        nvgFillColor(vg, oled::tRGBA(8, 6, 4, 255));
         nvgFill(vg);
         nvgStrokeWidth(vg, 0.8f);
-        nvgStrokeColor(vg, nvgRGBA(150, 95, 25, 200));
+        nvgStrokeColor(vg, oled::tRGBA(150, 95, 25, 200));
         nvgStroke(vg);
 
         bool ext = module && module->inputs[SynTHBloK::CLOCK_IN_INPUT].isConnected();
@@ -1137,12 +1143,12 @@ struct ClockDisplay : TransparentWidget {
         else snprintf(text, sizeof(text), "%.1f", bpm);
 
         nvgFontSize(vg, 7.f);
-        nvgFillColor(vg, ext ? nvgRGBA(120, 220, 255, 255) : nvgRGBA(255, 170, 40, 255));
+        nvgFillColor(vg, ext ? oled::tRGBA(120, 220, 255, 255) : oled::tRGBA(255, 170, 40, 255));
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, 3.f, h * 0.5f, text, NULL);
 
         nvgFontSize(vg, 4.f);
-        nvgFillColor(vg, nvgRGBA(150, 100, 40, 255));
+        nvgFillColor(vg, oled::tRGBA(150, 100, 40, 255));
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, w - 2.5f, h * 0.5f + 0.5f, ext ? "EXT" : "BPM", NULL);
     }
@@ -1157,7 +1163,7 @@ struct ClockKnobDim : TransparentWidget {
         NVGcontext* vg = args.vg;
         nvgBeginPath(vg);
         nvgCircle(vg, box.size.x * 0.5f, box.size.y * 0.5f, box.size.x * 0.5f);
-        nvgFillColor(vg, nvgRGBA(10, 10, 10, 170));
+        nvgFillColor(vg, oled::tRGBA(10, 10, 10, 170));
         nvgFill(vg);
     }
 };
@@ -1176,8 +1182,8 @@ struct MainVoiceCountDisplay : TransparentWidget {
         NVGcontext* vg = args.vg;
 
         // Background gradient
-        NVGcolor bgTop    = nvgRGBA(10, 10, 10, 255);
-        NVGcolor bgBottom = nvgRGBA(0, 0, 0, 255);
+        NVGcolor bgTop    = oled::tRGBA(10, 10, 10, 255);
+        NVGcolor bgBottom = oled::tRGBA(0, 0, 0, 255);
         NVGpaint bg = nvgLinearGradient(vg, 0, 0, 0, box.size.y, bgTop, bgBottom);
 
         nvgBeginPath(vg);
@@ -1188,14 +1194,14 @@ struct MainVoiceCountDisplay : TransparentWidget {
         // Border
         nvgBeginPath(vg);
         nvgRoundedRect(vg, 0, 0, box.size.x, box.size.y, 3.f);
-        nvgStrokeColor(vg, nvgRGBA(255, 180, 90, 80));
+        nvgStrokeColor(vg, oled::tRGBA(255, 180, 90, 80));
         nvgStrokeWidth(vg, 1.0f);
         nvgStroke(vg);
 
         // Text
         nvgFontSize(vg, 8.f);
         nvgFontFaceId(vg, 0);
-        nvgFillColor(vg, nvgRGBA(255, 240, 180, 255));
+        nvgFillColor(vg, oled::tRGBA(255, 240, 180, 255));
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         char buf[16];
@@ -1208,7 +1214,7 @@ struct MainVoiceCountDisplay : TransparentWidget {
             nvgBeginPath(vg);
             nvgMoveTo(vg, 1, y);
             nvgLineTo(vg, box.size.x - 1, y);
-            nvgStrokeColor(vg, nvgRGBA(255, 200, 120, 18));
+            nvgStrokeColor(vg, oled::tRGBA(255, 200, 120, 18));
             nvgStrokeWidth(vg, 0.4f);
             nvgStroke(vg);
         }
@@ -1228,6 +1234,27 @@ inline void addQuadMenu(Menu* menu, SynTHBloK* module) {
 
 // The QUAD's controls, ox mm to the right of the panel's left edge (screws and panel stay with the widget).
 // essential: only CLOCK IN/OUT, RESET and the stereo out, in one column at x 117.5 (MTX QUAD's 41 HP panel).
+// A jack label drawn in the panel's label style (Nov 26 2026: the stereo L / R outs had none on the SVG).
+struct QuadJackLabel : TransparentWidget {
+    std::string text;
+    void draw(const DrawArgs& args) override {
+        std::shared_ptr<window::Font> font = APP->window->uiFont;
+        if (!font) return;
+        nvgFontFaceId(args.vg, font->handle);
+        nvgFontSize(args.vg, 6.2f);
+        nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgFillColor(args.vg, nvgRGB(0xf2, 0xf2, 0xf2));
+        nvgText(args.vg, box.size.x * 0.5f, box.size.y * 0.5f, text.c_str(), NULL);
+    }
+};
+inline void addQuadJackLabel(ModuleWidget* w, float xMm, float yMm, const char* t) {
+    auto* l = new QuadJackLabel;
+    l->text = t;
+    l->box.size = mm2px(Vec(12.f, 3.f));
+    l->box.pos = mm2px(Vec(xMm - 6.f, yMm - 1.5f));
+    w->addChild(l);
+}
+
 inline void addQuadControls(ModuleWidget* w, SynTHBloK* module, float ox, bool essential = false) {
         using namespace rack::componentlibrary;
         auto mm = [=](float x, float y) { return mm2px(Vec(x + ox, y)); };
@@ -1324,6 +1351,8 @@ w->addChild(vdisp);
         if (!essential) {
         w->addOutput(createOutputCentered<BlackJack>(mm(14.f, 116.f), module, SynTHBloK::STEREO_L_OUTPUT));   // (centred where the 8 mm jack's middle was: the small jack stays on its spot)
         w->addOutput(createOutputCentered<BlackJack>(mm(25.f, 116.f), module, SynTHBloK::STEREO_R_OUTPUT));
+        addQuadJackLabel(w, 14.f, 121.4f, "L OUT");
+        addQuadJackLabel(w, 25.f, 121.4f, "R OUT");
         }
 w->addParam(createParamCentered<Trimpot>(mm(56.f, 57.f), module, SynTHBloK::KEYTRACK_PARAM));
         if (!essential) w->addInput(createInputCentered<BlackJack>(mm(56.f, 50.f), module, SynTHBloK::KEYTRACK_INPUT));
